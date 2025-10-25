@@ -34,6 +34,18 @@ pipeline {
             }
         }
 
+        stage('Docker Login') {
+            steps {
+                script {
+                    // Login to DockerHub
+                    sh "echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin"
+
+                    // Login to Nexus
+                    sh "echo ${NEXUS_CREDENTIALS_PSW} | docker login ${NEXUS_URL} -u ${NEXUS_CREDENTIALS_USR} --password-stdin"
+                }
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
                 sh "docker build -t $IMAGE_NAME:${BUILD_NUMBER} ."
@@ -44,16 +56,12 @@ pipeline {
             steps {
                 script {
                     // Push to DockerHub
-                    docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
-                        sh "docker push $IMAGE_NAME:${BUILD_NUMBER}"
-                        sh "docker push $IMAGE_NAME:latest"
-                    }
+                    sh "docker push $IMAGE_NAME:${BUILD_NUMBER}"
+                    sh "docker push $IMAGE_NAME:latest"
 
                     // Push to Nexus
-                    docker.withRegistry(NEXUS_URL, NEXUS_CREDENTIALS) {
-                        sh "docker tag $IMAGE_NAME:${BUILD_NUMBER} $NEXUS_URL$IMAGE_NAME:${BUILD_NUMBER}"
-                        sh "docker push $NEXUS_URL$IMAGE_NAME:${BUILD_NUMBER}"
-                    }
+                    sh "docker tag $IMAGE_NAME:${BUILD_NUMBER} $NEXUS_URL$IMAGE_NAME:${BUILD_NUMBER}"
+                    sh "docker push $NEXUS_URL$IMAGE_NAME:${BUILD_NUMBER}"
                 }
             }
         }
