@@ -2,11 +2,9 @@ pipeline {
     agent any
 
     environment {
-        NODEJS_HOME = '/usr/local/bin/node'
+        IMAGE_NAME = 'yourdockerhubusername/realme-node-website'
         DOCKERHUB_CREDENTIALS = 'docker'
         NEXUS_CREDENTIALS = 'nexus_creds'
-        SONARQUBE_ENV = 'sonarqube'
-        IMAGE_NAME = 'yourdockerhubusername/realme-node-website'
         NEXUS_URL = 'http://<nexus-server>:8081/repository/docker-hosted/'
         KUBE_CONFIG = 'kubeconfig-cred'
     }
@@ -14,15 +12,14 @@ pipeline {
     stages {
         stage('Checkout Code') {
             steps {
-                checkout([$class: 'GitSCM', branches: [[name: '*/main']],
-                          userRemoteConfigs: [[url: 'https://github.com/siva-123-hash/realme-website.git']]])
+                git url: 'https://github.com/siva-123-hash/realme-website.git', branch: 'main'
             }
         }
 
         stage('Install & Test') {
             steps {
-                sh '${NODEJS_HOME} install'
-                sh '${NODEJS_HOME} test || echo "Tests passed"'
+                sh 'npm install'
+                sh 'npm test || echo "Tests passed"'
             }
         }
 
