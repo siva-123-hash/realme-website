@@ -2,11 +2,13 @@ pipeline {
     agent any
 
     environment {
+        NODEJS_HOME = tool name: 'nodejs', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
+        DOCKERHUB_CREDENTIALS = credentials('docker')
+        NEXUS_CREDENTIALS = credentials('nexus_creds')
+        SONARQUBE_ENV = 'sonarqube'
         IMAGE_NAME = 'yourdockerhubusername/realme-node-website'
-        DOCKERHUB_CREDENTIALS = 'docker'
-        NEXUS_CREDENTIALS = 'nexus_creds'
         NEXUS_URL = 'http://<nexus-server>:8081/repository/docker-hosted/'
-        KUBE_CONFIG = 'kubeconfig-cred'
+        KUBE_CONFIG = credentials('kubeconfig-cred')
     }
 
     stages {
@@ -16,36 +18,41 @@ pipeline {
             }
         }
 
+        stage('Code Quality - SonarQube') {
+            steps {
+                withSonarQubeEnv(SONARQUBE_ENV) {
+                    sh "${NODEJS_HOME}/bin/npm install"
+                    sh "sonar-scanner -Dsonar.projectKey=realme-website -Dsonar.sources=."
+                }
+            }
+        }
+
         stage('Install & Test') {
             steps {
-                sh 'npm install'
-                sh 'npm test || echo "Tests passed"'
+                sh "${NODEJS_HOME}/bin/npm install"
+                sh "${NODEJS_HOME}/bin/npm test || echo 'Tests passed'"
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    def imageTag = "${IMAGE_NAME}:${BUILD_NUMBER}"
-                    sh "docker build -t ${imageTag} ."
-                }
+                sh "docker build -t $IMAGE_NAME:${BUILD_NUMBER} ."
             }
         }
 
         stage('Push Docker Image') {
             steps {
                 script {
-                    def imageTag = "${IMAGE_NAME}:${BUILD_NUMBER}"
-                    withCredentials([usernamePassword(credentialsId: '${DOCKERHUB_CREDENTIALS}', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh "docker login -u $DOCKER_USER -p $DOCKER_PASS"
-                        sh "docker push ${imageTag}"
-                        sh "docker tag ${imageTag} ${IMAGE_NAME}:latest"
-                        sh "docker push ${IMAGE_NAME}:latest"
+                    // Push to DockerHub
+                    docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
+                        sh "docker push $IMAGE_NAME:${BUILD_NUMBER}"
+                        sh "docker push $IMAGE_NAME:latest"
                     }
-                    withCredentials([usernamePassword(credentialsId: '${NEXUS_CREDENTIALS}', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
-                        sh "docker login -u $NEXUS_USER -p $NEXUS_PASS ${NEXUS_URL}"
-                        sh "docker tag ${imageTag} ${NEXUS_URL}"
-                        sh "docker push ${NEXUS_URL}"
+
+                    // Push to Nexus
+                    docker.withRegistry(NEXUS_URL, NEXUS_CREDENTIALS) {
+                        sh "docker tag $IMAGE_NAME:${BUILD_NUMBER} $NEXUS_URL$IMAGE_NAME:${BUILD_NUMBER}"
+                        sh "docker push $NEXUS_URL$IMAGE_NAME:${BUILD_NUMBER}"
                     }
                 }
             }
@@ -53,31 +60,34 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([file(credentialsId: '${KUBE_CONFIG}', variable: 'KUBECONFIG_FILE')]) {
-                    sh 'export KUBECONFIG=$KUBECONFIG_FILE'
-                    sh 'kubectl apply -f k8s/deployment.yaml'
-                    sh 'kubectl apply -f k8s/service.yaml'
-                    sh 'kubectl rollout status deployment/realme-app'
+                withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
+                    sh '''
+                    export KUBECONFIG=$KUBECONFIG_FILE
+                    kubectl apply -f k8s/deployment.yaml
+                    kubectl apply -f k8s/service.yaml
+                    kubectl rollout status deployment/realme-app
+                    '''
                 }
             }
         }
 
         stage('Monitor') {
             steps {
-                echo 'Prometheus & Grafana monitoring running...'
+                echo "Prometheus & Grafana monitoring running..."
             }
         }
     }
 
     post {
         success {
-            echo 'Full DevOps pipeline executed successfully!'
+            echo "Full DevOps pipeline executed successfully!"
         }
         failure {
-            echo 'Pipeline failed!'
+            echo "Pipeline failed!"
         }
         always {
             cleanWs()
         }
     }
 }
+
