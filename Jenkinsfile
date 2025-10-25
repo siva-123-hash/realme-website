@@ -25,21 +25,28 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .'
+                script {
+                    def imageTag = "${IMAGE_NAME}:${BUILD_NUMBER}"
+                    sh "docker build -t ${imageTag} ."
+                }
             }
         }
 
         stage('Push Docker Image') {
             steps {
-                withCredentials([usernamePassword(credentialsId: '${DOCKERHUB_CREDENTIALS}', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh 'docker login -u $DOCKER_USER -p $DOCKER_PASS'
-                    sh 'docker push ${IMAGE_NAME}:${BUILD_NUMBER}'
-                    sh 'docker push ${IMAGE_NAME}:latest'
-                }
-                withCredentials([usernamePassword(credentialsId: '${NEXUS_CREDENTIALS}', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
-                    sh 'docker login -u $NEXUS_USER -p $NEXUS_PASS ${NEXUS_URL}'
-                    sh 'docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${NEXUS_URL}:latest'
-                    sh 'docker push ${NEXUS_URL}'
+                script {
+                    def imageTag = "${IMAGE_NAME}:${BUILD_NUMBER}"
+                    withCredentials([usernamePassword(credentialsId: '${DOCKERHUB_CREDENTIALS}', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh "docker login -u $DOCKER_USER -p $DOCKER_PASS"
+                        sh "docker push ${imageTag}"
+                        sh "docker tag ${imageTag} ${IMAGE_NAME}:latest"
+                        sh "docker push ${IMAGE_NAME}:latest"
+                    }
+                    withCredentials([usernamePassword(credentialsId: '${NEXUS_CREDENTIALS}', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+                        sh "docker login -u $NEXUS_USER -p $NEXUS_PASS ${NEXUS_URL}"
+                        sh "docker tag ${imageTag} ${NEXUS_URL}"
+                        sh "docker push ${NEXUS_URL}"
+                    }
                 }
             }
         }
