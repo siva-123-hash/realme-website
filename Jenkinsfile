@@ -12,36 +12,54 @@ pipeline {
     }
 
     stages {
-        stage('Checkout Code') { steps { git 'https://github.com/yourusername/realme-node-website.git' } }
+        stage('Checkout Code') {
+            steps {
+                node {
+                    git 'https://github.com/siva-123-hash/realme-website.git'
+                }
+            }
+        }
 
         stage('Code Quality - SonarQube') {
             steps {
-                withSonarQubeEnv("${SONARQUBE_ENV}") {
-                    sh "${NODEJS_HOME}/bin/npm install"
-                    sh "sonar-scanner -Dsonar.projectKey=realme-website -Dsonar.sources=."
+                node {
+                    withSonarQubeEnv("${SONARQUBE_ENV}") {
+                        sh "${NODEJS_HOME}/bin/npm install"
+                        sh "sonar-scanner -Dsonar.projectKey=realme-website -Dsonar.sources=."
+                    }
                 }
             }
         }
 
         stage('Install & Test') {
             steps {
-                sh "${NODEJS_HOME}/bin/npm install"
-                sh "${NODEJS_HOME}/bin/npm test || echo 'Tests passed'"
+                node {
+                    sh "${NODEJS_HOME}/bin/npm install"
+                    sh "${NODEJS_HOME}/bin/npm test || echo 'Tests passed'"
+                }
             }
         }
 
-        stage('Build Docker Image') { steps { sh "docker build -t $IMAGE_NAME:${BUILD_NUMBER} ." } }
+        stage('Build Docker Image') {
+            steps {
+                node {
+                    sh "docker build -t $IMAGE_NAME:${BUILD_NUMBER} ."
+                }
+            }
+        }
 
         stage('Push Docker Image') {
             steps {
-                script {
-                    docker.withRegistry('', "${DOCKERHUB_CREDENTIALS}") {
-                        sh "docker push $IMAGE_NAME:${BUILD_NUMBER}"
-                        sh "docker push $IMAGE_NAME:latest"
-                    }
-                    docker.withRegistry("${NEXUS_URL}", "${NEXUS_CREDENTIALS}") {
-                        sh "docker tag $IMAGE_NAME:${BUILD_NUMBER} $NEXUS_URL:latest"
-                        sh "docker push $NEXUS_URL"
+                node {
+                    script {
+                        docker.withRegistry('', "${DOCKERHUB_CREDENTIALS}") {
+                            sh "docker push $IMAGE_NAME:${BUILD_NUMBER}"
+                            sh "docker push $IMAGE_NAME:latest"
+                        }
+                        docker.withRegistry("${NEXUS_URL}", "${NEXUS_CREDENTIALS}") {
+                            sh "docker tag $IMAGE_NAME:${BUILD_NUMBER} $NEXUS_URL:latest"
+                            sh "docker push $NEXUS_URL"
+                        }
                     }
                 }
             }
@@ -49,23 +67,37 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
-                    sh '''
-                    export KUBECONFIG=$KUBECONFIG_FILE
-                    kubectl apply -f k8s/deployment.yaml
-                    kubectl apply -f k8s/service.yaml
-                    kubectl rollout status deployment/realme-app
-                    '''
+                node {
+                    withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
+                        sh '''
+                        export KUBECONFIG=$KUBECONFIG_FILE
+                        kubectl apply -f k8s/deployment.yaml
+                        kubectl apply -f k8s/service.yaml
+                        kubectl rollout status deployment/realme-app
+                        '''
+                    }
                 }
             }
         }
 
-        stage('Monitor') { steps { echo "Prometheus & Grafana monitoring running..." } }
+        stage('Monitor') {
+            steps {
+                node {
+                    echo "Prometheus & Grafana monitoring running..."
+                }
+            }
+        }
     }
 
     post {
-        success { echo "Full DevOps pipeline executed successfully!" }
-        failure { echo "Pipeline failed!" }
-        always { cleanWs() }
+        success {
+            node { echo "Full DevOps pipeline executed successfully!" }
+        }
+        failure {
+            node { echo "Pipeline failed!" }
+        }
+        always {
+            node { cleanWs() }
+        }
     }
 }
