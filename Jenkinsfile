@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         NODEJS_HOME = tool name: 'nodejs', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
-        DOCKERHUB_CREDENTIALS = credentials('docker')
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub_creds')
         NEXUS_CREDENTIALS = credentials('nexus_creds')
         SONARQUBE_ENV = 'sonarqube'
         IMAGE_NAME = 'yourdockerhubusername/realme-node-website'
@@ -76,9 +76,15 @@ pipeline {
     }
 
     post {
-        success { echo "Full DevOps pipeline executed successfully!" }
-        failure { echo "Pipeline failed!" }
-        always { cleanWs() }
+        success {
+            echo "Full DevOps pipeline executed successfully!"
+        }
+        failure {
+            echo "Pipeline failed!"
+        }
+        always {
+            script { cleanWs() }
+        }
     }
 }
 
