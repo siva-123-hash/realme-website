@@ -12,6 +12,7 @@ pipeline {
     }
 
     stages {
+
         stage('Checkout Code') {
             steps {
                 git url: 'https://github.com/siva-123-hash/realme-website.git', branch: 'main'
@@ -38,10 +39,14 @@ pipeline {
             steps {
                 script {
                     // Login to DockerHub
-                    sh "echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin"
+                    withCredentials([usernamePassword(credentialsId: 'docker', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+                    }
 
                     // Login to Nexus
-                    sh "echo ${NEXUS_CREDENTIALS_PSW} | docker login ${NEXUS_URL} -u ${NEXUS_CREDENTIALS_USR} --password-stdin"
+                    withCredentials([usernamePassword(credentialsId: 'nexus_creds', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+                        sh "echo $NEXUS_PASS | docker login ${NEXUS_URL} -u $NEXUS_USER --password-stdin"
+                    }
                 }
             }
         }
@@ -57,6 +62,7 @@ pipeline {
                 script {
                     // Push to DockerHub
                     sh "docker push $IMAGE_NAME:${BUILD_NUMBER}"
+                    sh "docker tag $IMAGE_NAME:${BUILD_NUMBER} $IMAGE_NAME:latest"
                     sh "docker push $IMAGE_NAME:latest"
 
                     // Push to Nexus
@@ -70,10 +76,10 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
                     sh '''
-                    export KUBECONFIG=$KUBECONFIG_FILE
-                    kubectl apply -f k8s/deployment.yaml
-                    kubectl apply -f k8s/service.yaml
-                    kubectl rollout status deployment/realme-app
+                        export KUBECONFIG=$KUBECONFIG_FILE
+                        kubectl apply -f k8s/deployment.yaml
+                        kubectl apply -f k8s/service.yaml
+                        kubectl rollout status deployment/realme-app
                     '''
                 }
             }
@@ -88,13 +94,18 @@ pipeline {
 
     post {
         success {
-            echo "Full DevOps pipeline executed successfully!"
+            echo "✅ Full DevOps pipeline executed successfully!"
         }
         failure {
-            echo "Pipeline failed!"
+            echo "❌ Pipeline failed!"
         }
         always {
-            cleanWs()
+            script {
+                // cleanWs must run inside a node context
+                node {
+                    cleanWs()
+                }
+            }
         }
     }
 }
